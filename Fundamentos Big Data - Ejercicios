@@ -1,0 +1,320 @@
+HIVE
+
+1- Acceder
+hive
+
+2– Mostrar las cabeceras
+set hive.cli.print.header=true;
+
+3- Crear db
+Create database cursohivedb;
+
+4- ir a la bd
+use cursohivedb;
+
+5- comprobar que está vacia
+Show tables
+
+6- Crear tabla “iris”
+DROP TABLE iris; 
+create table iris( s_length float, s_width float, p_length float, p_width float, clase string ) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',';
+
+7- Comprobar
+Show tables;
+DESC iris;
+
+9-Copiar el fichero a HDFS
+hadoop fs -mkdir /user/cloudera/hive
+hadoop fs -put /home/cloudera/ejercicios/ejercicios_HIVE/iris_completo.txt /user/cloudera/hive
+
+10- Comprueba que el fichero está en la ruta en HDFS indicada
+11- Importa el fichero en la tabla iris
+load data inpath ‘/user/cloudera/hive/iris_completo.txt’ into table iris;
+
+12- Comprobar que tiene datos
+select * from iris
+
+13- Mostar las 5 primeras filas
+Select * from iris limit 5;
+
+14- Mostrar filas cuyo s_length sea mayor que 5
+select * from iris where s_length > 5;
+
+15- Seleccionar la media de s_width agrupados por clase.
+Select avg(s_width) from iris group by clase;
+
+16- Como eliminar un NULL
+
+17- Insertar en la tabla una fila
+“insert into table iris values (1.0,3.2,4.3,5.7,"Iris-virginica");” 
+
+18-  Contar ocurrencias
+Select clase, count(*) from iris group by clase;
+
+19- Seleccionar las clases con mas de 45 ocurrencias
+select clase, count(*) from iris group by clase having count(*) > 45;
+
+20- con LEAD
+select clase, p_length, LEAD(p_length,1,0) OVER (PARTITION BY clase ORDER BY p_length) as Lead from iris;
+
+21- Consulta larga
+select clase, p_length, s_length, p_width, 
+count(p_length) over (partition by p_length) as p1_ct, 
+max(s_length) over (partition by clase) as s1_ct, 
+avg (p_width) over (partition by clase) as s1_av 
+from iris order by clase, s_length desc;
+
+
+PIG
+
+1- ls (datos_pig.txt)
+
+2- pig -x local
+
+3- load '/home/cloudera/ejercicios/pig/datos_pig.txt' as (key:chararray, campana:chararray, fecha:chararray, tiempo:chararray, display: chararray, accion:int, cpc:int, pais:chararray, lugar:chararray);
+
+4- describe data;
+
+5- result = filter data by pais == 'USA';
+
+6- result = filter data by key matches ‘^surf.*’;
+
+7- ordenado = foreach result generate campana, fecha, tiempo, key, display, lugar, accion, cpc;
+
+8- store ordenado into ‘/Home/cloudera/ejercicios/pig/resultado’;
+
+9- Mostar resultado por pantalla
+
+
+SQOOP
+
+1- mysql -u root -p
+   password: cloudera
+
+2- show databases;
+
+3- create database pruebadb;
+
+4- use pruebadb;
+   create table tabla_prueba (nombre varchar(30), edad int);
+  
+5- show tables;
+
+6- INSERT INTO tabla_prueba VALUES ("Alberto",22); 
+   INSERT INTO tabla_prueba VALUES ("Luis", 23);
+   INSERT INTO tabla_prueba VALUES ("Pablo", 24);
+   
+7- Select * from tabla_prueba;
+   Describe tabla_prueba;
+  
+Importar con SQOOP:
+
+1- sudo mkdir /var/lib/accumulo
+   ACCUMULO_HOME='var/lib/accumulo'
+   export ACCUMULO_HOME	
+
+2- sqoop list-databases --connect jdbc:mysql://localhost --username root --password cloudera
+
+3- sqoop list-tables --connect jdbc:mysql://localhost/pruebadb --username root --password cloudera
+
+4- sqoop import --connect jdbc:mysql://localhost/Pruebadb --table tabla_prueba --username root --password cloudera -m 1 --hive-import --hive-overwrite --hive-table prueba sqoop_hive.tabla_prueba
+
+
+FLUME
+
+3. Importar datos desde un spool-dir a HDFS
+example3.conf
+# Name the components on this agent
+a1.sources = r1
+a1.sinks = k1
+a1.channels = c1
+
+# Describe/configure the source 
+a1.sources.r1.type = spooldir
+a1.sources.r1.spoolDir = /var/log/apache/flumeSpool
+a1.sources.r1.fileHeader = true 
+a1.sources.r1.bind = localhost
+a1.sources.r1.port = 44444
+
+#Describe the sink 
+a1.sinks.k1.type = hdfs
+a1.sinks.k1.hdfs.path = /flume/events/%y-%m-%d/%H%M/%S
+a1.sinks.k1.hdfs.filePrefix = events-
+a1.sinks.k1.hdfs.round = true
+a1.sinks.k1.hdfs.roundValue = 10
+a1.sinks.k1.hdfs.roundUnit = minute
+a1.sinks.k1.hdfs.useLocalTimeStamp = true
+# Use a channel which buffers events in memory
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 1000
+
+Agente 
+flume-ng agent --conf conf --conf-file /home/cloudera/example3.conf --name a1 -Dflume.root.logger=DEBUG,console -Dorg.apache.flume.log.printconfig=true -Dorg.apache.flume.log.rawdata=true
+
+Para que salga en formato texto BIEN, añadir:
+a1.sinks.k1.hdfs.writeFormat = Text
+a1.sinks.k1.hdfs.fileType = DataStream
+
+
+SPARK
+
+Recorrer una lista de valores
+x.collect() → muestra todas
+x.take(5) → muestra los 5 primeros valores
+x.foreach(println) → muestra un valor y hace salto de linea
+for(x <- ips.collect()) {println(x)} → como el foreach pero con for
+
+Almacenar ruta en variable
+Val ruta =”file:/home/BIT/data/…”
+
+Crear RDD con el contenido 
+val rdd = sc.textFile(ruta)
+val rdd = sc.parallelize(List(“nombre”, “contenido”))
+
+Filtros etc
+contains → val jpglogs = logs.filter(x => x.contains(“.jpg”))
+count → val jpglogs=logs.filter(x=>x.contains(".jpg")).count()
+split → val logwords=log.map(x =>x.split(“ ”)) (Lo divide por espacios)
+val ips = logs.map(x=>x.split(“ “)(0)) (El 0 significa que pillo el elemento nº 0 de cada linea) 
+
+
+Guardar en archivo
+ips.saveAsTextFile("file:/home/cloudera/iplist")
+
+Mas complicado
+var htmllogs = logs.filter(_.contains(".html")).map( x => (x.split(" ")(0), x.split(" ")(2)))
+val lista = sc.textFile("file:/home/BIT/data/weblogs/weblogs/*").map(line => line.split(' ')(0))saveAsTextFile("file:/home/cloudera/iplistw4")
+
+
+PAIR RDD’S
+
+Hacer un map de varios campos:
+sc.textFile(“xxxxx.txt”).map(line => line.split(“ “)).map(fields => (fields[0], fields[2]))
+
+otro: … .map(x => (x(0), x(1).split(“:”)(0)))
+
+
+EJERCICIOS PAIR RDD’S
+
+
+MapReduce: cuenta el número de peticiones de cada usuario, es decir, las veces que cada usuario aparece en una línea de un log. 
+Primero usar Map para crear un RDD que contenga el par (ID, 1) (el campo ID es el tercer elemento de cada línea).
+Usar Reduce para sumar los valores correspondientes a cada userid. 
+- var logs=sc.textFile("file:/home/BIT/data/weblogs/weblogs/*")
+- var userreqs = logs.map(line => line.split(' ')).map(words => (words(2),1)).reduceByKey((v1,v2) => v1 + v2)
+
+Mostar id y numero de accesos para los 10 usuarios con mayor número de accesos. 
+- val swapped = rdd.map(field => field.swap)
+- swapped.sortByKey(false).map(field => field.swap).take(10).foreach(println)
+
+RDD donde la clave sea el userid y el valor sea una lista de ips a las que el userid se ha conectado 
+- var useripds = logs.map(line => line.split(' ')).map(words => (words(2),words(0))).groupByKey()
+- useripds.take(10)
+
+CON CSV Y UN JOIN
+- var accounts = sc.textFile("file:/home/BIT/data/accounts.csv").map(line => line.split(',')).map(account => (account(0),account))
+- var accounthits = accounts.join(rdd)
+- for(pair <- accounthits.take(5)) {println(pair._1, pair._2._2, pair._2._1(3), pair._2._1(4))}
+
+MAS
+Usar como clave el noveno campo (KeyBy)
+- var accountsByPCode = sc.textFile("file:/home/BIT/data/accounts.csv").map(_.split(',')).keyBy(_(8))
+
+Map con clave Codigo Postal y valores Lista de nombres
+- var namesByPCode = accountsByPCode.mapValues(values => values(4) + ',' + values(3)).groupByKey()
+
+Contar palabras Shakespeare
+- val logs=sc.textFile(“shakespeare/*”) 
+- Val logs2=logs.flatMap(line => line.split(“ “)) 
+- Val logs3=logs2.map(word => (word,1)).reduceByKey(_+_) 
+- Val logs4=logs3.map(word => word.swap).sortByKey(false).map(value.swap)
+
+
+SparkSQL 
+
+Crear SQLContext:
+⦁ var ssc = new org.apache.spark.sql.SQLContext(sc)
+Importa implicits que permiten convertir RDDs en DataFrames
+⦁ import sqlContext.implicits._
+Cargar dataset 
+⦁ var zips = ssc.load("file:/home/BIT/data/zips.json", "json")
+Visualiza los datos 
+⦁ zips.show()
+Obtén las filas cuyos códigos postales cuya población es superior a 10000 usando el api de DataFrames
+⦁ zips.filter(zips("pop") > 10000).collect() 
+O tambien
+⦁ ssc.sql("select * from zips where pop > 10000").collect()
+Guarda tabla en fichero temporal
+⦁ zips.registerTempTable("zips")
+
+CONSULTAS SQL
+ssc.sql("select SUM(pop) as POPULATION from zips where state='WI'").show()
+ssc.sql("select * from zips where pop > 10000").collect()
+ssc.sql("select state, SUM(pop) as POPULATION from zips group by state order by SUM(pop) DESC ").show()
+
+
+SparkSQL (hive) 
+
+comando: “sudo cp /usr/lib/hive/conf/hive-site.xml /usr/lib/spark/conf/”
+⦁ val sqlContext = new org.apache.spark.sql.hive.HiveContext(sc)
+⦁ sqlContext.sql("CREATE DATABASE IF NOT EXISTS hivespark")
+⦁ sqlContext.sql("CREATE TABLE hivespark.empleados(id INT, name STRING, age INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LINES TERMINATED BY '\n'")	
+
+usando SparkSQL, subid los datos del fichero “/home/cloudera/empleado.txt” a la tabla hive, 
+⦁ sqlContext.sql("LOAD DATA LOCAL INPATH '/home/cloudera/empleado.txt' INTO TABLE hivespark.empleados")
+
+
+Ejecutar consulta en los terminales de Hive y Spark
+⦁ Hive: select * from empleados;
+⦁ Spark: var query1=sqlContext.sql("SELECT * FROM hivespark.empleados")
+⦁ Spark: query1.show()
+
+
+SparkSQL (DataFrames) 
+
+Creamos un contexto SQL
+⦁ var ssc = new org.apache.spark.sql.SQLContext(sc)
+
+Importa los implicits
+⦁ import sqlContext.implicits._
+⦁ import org.apache.spark.sql.Row
+⦁ import org.apache.spark.sql.types.{StructType,StructField,StringType}
+
+Creamos una variable con la ruta al fichero 
+⦁ var ruta_datos="file:/home/cloudera/Desktop/DataSetPartidos.txt"
+
+Leemos el contenido del archivo en una variable
+⦁ var datos =sc.textFile(ruta_datos)
+
+Creamos una variable que contenga el esquema de los datos
+⦁ val schemaString = "idPartido::temporada::jornada::EquipoLocal::EquipoVisitante::golesLocal::golesVisitante::fecha::timestamp”
+
+Generamos el esquema basado en la variable que contiene el esquema de los datos que acabamos de crear
+⦁ val schema =  StructType(schemaString.split("::").map(fieldName => StructField(fieldName, StringType, true)))
+
+Convertimos las filas de nuestro RDD a Rows
+⦁ val rowRDD = datos.map(_.split("::")).map(p => Row(p(0), p(1) , p(2) , p(3) , p(4) , p(5) , p(6) , p(7) , p(8).trim))
+
+Aplicamos el Schema al RDD
+⦁ val partidosDataFrame = sqlContext.createDataFrame(rowRDD, schema)
+
+Registramos el DataFrame como una Tabla
+⦁ partidosDataFrame.registerTempTable("partidos")
+
+Ya estamos listos para hacer consultas sobre el DF con el siguiente formato
+⦁ val results = sqlContext.sql("SELECT temporada, jornada FROM partidos")
+⦁ results.show()
+
+los resultados de las queries son DF y soportan las operaciones como los RDDs normales. Las columnas en el Row de resultados son accesibles por índice o nombre de campo
+⦁ results.map(t => "Name: " + t(0)).collect().foreach(println)
+
+
+Ejercicio: ¿Cuál es el record de goles como visitante en una temporada del Oviedo?
+⦁ Val recordOviedo = sqlContext.sql("select sum(golesVisitante) as goles, temporada from partidos where equipoVisitante='Real Oviedo' group by temporada order by goles desc")
+⦁ recordOviedo.take(1)
+
+¿Quién ha estado más temporadas en 1 Division Sporting u Oviedo?
+⦁ val temporadasOviedo = sqlContext.sql("select count(distinct(temporada)) from partidos where equipoLocal='Real Oviedo' or equipoVisitante='Real Oviedo' ")
+⦁ val temporadasSporting = sqlContext.sql("select count(distinct(temporada)) from partidos where equipoLocal='Sporting de Gijon' or equipoVisitante='Sporting de Gijon' ")
+
+
