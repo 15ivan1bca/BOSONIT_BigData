@@ -1,0 +1,222 @@
+1 - Creación de tablas en formato texto
+
+	1.1) Crear Base de datos "datos_padron"
+		- Entramos al cliente de hive con "hive" y ponemos "CREATE DATABASE datos_padron;" y "USE datos_padron;" para situarnos en la bd.
+
+	1.2) Crear la tabla de datos padron_txt con todos los campos del fichero CSV y cargar los
+	     datos mediante el comando LOAD DATA LOCAL INPATH. La tabla tendrá formato
+             texto y tendrá como delimitador de campo el caracter ';' y los campos que en el
+             documento original están encerrados en comillas dobles '"' no deben estar
+             envueltos en estos caracteres en la tabla de Hive (es importante indicar esto
+             utilizando el serde de OpenCSV, si no la importación de las variables que hemos
+             indicado como numéricas fracasará ya que al estar envueltos en comillas los toma
+             como strings) y se deberá omitir la cabecera del fichero de datos al crear la tabla.
+
+		- CREATE TABLE padron_txt (cod_distrito INT, desc_distrito STRING, cod_dist_barrio INT, 
+		  desc_barrio STRING, cod_barrio INT, cod_dist_seccion INT, cod_seccion INT, cod_edad_int INT, 
+                  EspanolesHombres INT, EspanolesMujeres INT, ExtranjerosHombres INT, ExtranjerosMujeres INT) 
+                  ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' WITH SERDEPROPERTIES 
+                  ("separatorChar" = "\073", "quoteChar" = '"') STORED AS TEXTFILE;
+
+		- LOAD DATA LOCAL INPATH '/home/cloudera/Desktop/Rango_Edades_Seccion_202204.csv' into table padron_txt;
+	
+	1.3) Hacer trim sobre los datos para eliminar los espacios innecesarios guardando la
+	     tabla resultado como padron_txt_2. (Este apartado se puede hacer creando la tabla
+             con una sentencia CTAS.)
+		
+		- CREATE TABLE padron_txt_2 AS SELECT cod_distrito, trim(desc_distrito) as desc_distrito, cod_dist_barrio, 
+		  trim(desc_barrio) as desc_barrio, cod_barrio, cod_dist_seccion, cod_seccion, cod_edad_int, EspanolesHombres, 
+		  EspanolesMujeres, ExtranjerosHombres, ExtranjerosMujeres FROM padron_txt;
+
+	1.4) Investigar y entender la diferencia de incluir la palabra LOCAL en el comando LOAD DATA.
+
+		- La diferencia es que si escribes "LOCAL" significa que el fichero que quieres cargar está en
+		  el sistema de archivos local "en este caso de la maquina virtual de cloudera" y si no escribes
+		  "LOCAL" buscará el archivo en el sistema de archivos de HDFS
+		
+	1.5) En este momento te habrás dado cuenta de un aspecto importante, los datos nulos
+	de nuestras tablas vienen representados por un espacio vacío y no por un
+	identificador de nulos comprensible para la tabla. Esto puede ser un problema para
+	el tratamiento posterior de los datos. Podrías solucionar esto creando una nueva
+	tabla utiliando sentencias case when que sustituyan espacios en blanco por 0. Para
+	esto primero comprobaremos que solo hay espacios en blanco en las variables
+	numéricas correspondientes a las últimas 4 variables de nuestra tabla (podemos
+	hacerlo con alguna sentencia de HiveQL) y luego aplicaremos las sentencias case
+	when para sustituir por 0 los espacios en blanco. (Pista: es útil darse cuenta de que
+	un espacio vacío es un campo con longitud 0). Haz esto solo para la tabla
+	padron_txt.
+
+		- CREATE TABLE padron_txt_3 AS SELECT cod_distrito, trim(desc_distrito), cod_dist_barrio, 
+		  trim(desc_barrio), cod_barrio, cod_dist_seccion, cod_seccion, cod_edad_int, 
+		  CASE WHEN length(EspanolesHombres) = 0 THEN 0 ELSE EspanolesHombres END AS EspanolesHombres, 
+		  CASE WHEN length(EspanolesMujeres) = 0 THEN 0 ELSE EspanolesMujeres END AS EspanolesMujeres, 
+		  CASE WHEN length(ExtranjerosHombres) = 0 THEN 0 ELSE ExtranjerosHombres END AS ExtranjerosHombres, 
+		  CASE WHEN length(ExtranjerosMujeres) = 0 THEN 0 ELSE ExtranjerosMujeres END AS ExtranjerosMujeres FROM padron_txt;
+
+	1.6) Una manera tremendamente potente de solucionar todos los problemas previos 
+	     (tanto las comillas como los campos vacíos que no son catalogados como null y los espacios 
+             innecesarios) es utilizar expresiones regulares (regex) que nos proporciona OpenCSV.
+
+		- create table padron_txt_e (COD_DISTRITO STRING, DESC_DISTRITO STRING, COD_DIST_BARRIO STRING, 
+		  DESC_BARRIO STRING,COD_BARRIO STRING, COD_DIST_SECCION STRING, COD_SECCION STRING, COD_EDAD_INT STRING, 
+		  EspanolesHombres STRING, EspanolesMujeres STRING, ExtranjerosHombres STRING,ExtranjerosMujeres STRING) 
+		  ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
+		  WITH SERDEPROPERTIES ('input.regex'='\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"\\;*\\"(\\w*)\\s*\\"')
+		  STORED AS TEXTFILE
+
+
+2 - Investigamos el formato columnar parquet
+
+	2.1) ¿Que es un CTAS?
+
+		- CTAS quiere decir = CREATE TABLE AS SELECT
+
+	2.2) Crear tabla Hive padron_parquet (cuyos datos serán almacenados en el formato
+	     columnar parquet) a través de la tabla padron_txt mediante un CTAS.
+
+		- CREATE TABLE padron_parquet STORED AS PARQUET AS SELECT * FROM padron_txt;
+
+	2.3) Crear tabla Hive padron_parquet_2 a través de la tabla padron_txt_2 mediante un
+	     CTAS. En este punto deberíamos tener 4 tablas, 2 en txt (padron_txt y
+	     padron_txt_2, la primera con espacios innecesarios y la segunda sin espacios
+	     innecesarios) y otras dos tablas en formato parquet (padron_parquet y
+	     padron_parquet_2, la primera con espacios y la segunda sin ellos).
+
+		-  CREATE TABLE padron_parquet_2 STORED AS PARQUET AS SELECT * FROM padron_txt_2;
+
+	2.4) Opcionalmente también se pueden crear las tablas directamente desde 0 (en lugar
+	     de mediante CTAS) en formato parquet igual que lo hicimos para el formato txt
+	     incluyendo la sentencia STORED AS PARQUET. Es importante para comparaciones
+	     posteriores que la tabla padron_parquet conserve los espacios innecesarios y la
+	     tabla padron_parquet_2 no los tenga. Dejo a tu elección cómo hacerlo.
+
+		- CREATE TABLE padron_parquet_3 (cod_distrito INT, desc_distrito STRING, cod_dist_barrio INT, 
+		  desc_barrio STRING, cod_barrio INT, cod_dist_seccion INT, cod_seccion INT, cod_edad_int INT, 
+		  EspanolesHombres INT, EspanolesMujeres INT, ExtranjerosHombres INT, ExtranjerosMujeres INT) 
+		  ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' WITH SERDEPROPERTIES 
+		  ("separatorChar" = "\073", "quoteChar" = '"') STORED AS PARQUET;
+
+		- LOAD DATA LOCAL INPATH '/mnt/hgfs/Rango_Edades_Seccion_202204.csv' overwrite into table padron_parquet_3;
+
+	2.5) Investigar en qué consiste el formato columnar parquet y las ventajas de trabajar con este tipo de formatos.
+
+		- Parquet es el formato de almacenamiento en columnas principal en el ecosistema Hadoop. 
+		  Fue desarrollado por primera vez por Twitter y Cloudera en cooperación. En mayo de 2015, 
+		  si HDFS es el estándar de facto para los sistemas de archivos en la era del big data,
+		  Parquet es el estándar de facto para los formatos de almacenamiento en la era del big data.
+		  En este formato, los valores de cada columna se almacenan físicamente en posiciones de contiguas, 
+		  lo que consigue que la compresión de los datos sea más eficiente al ser los datos contiguos similares.
+
+	2.6) Comparar el tamaño de los ficheros de los datos de las tablas padron_txt (txt),
+	     padron_txt_2 (txt pero no incluye los espacios innecesarios), padron_parquet y
+	     padron_parquet_2 (alojados en hdfs cuya ruta se puede obtener de la propiedad
+	     location de cada tabla por ejemplo haciendo "show create table").
+	
+		- EN HDFS:
+			- hdfs dfs -du -s -h '/user/hive/warehouse/datos_padron.db/padron_txt' (21.6Mb)
+			- hdfs dfs -du -s -h '/user/hive/warehouse/datos_padron.db/padron_txt_2' (11.9Mb)
+			- hdfs dfs -du -s -h '/user/hive/warehouse/datos_padron.db/padron_parquet' (913.3Kb)
+			- hdfs dfs -du -s -h '/user/hive/warehouse/datos_padron.db/padron_parquet_2' (911.2Kb)
+
+
+3- Juguemos con Impala.
+
+	3.1) ¿Qué es Impala?
+		- Cloudera Impala es un motor de consultas SQL open source de Cloudera para el procesamiento 
+		  masivo en paralelo de los datos almacenados en un clúster de computadoras corriendo Apache Hadoop.
+
+
+	3.2) ¿En qué se diferencia de Hive?
+
+		- Hay varias diferencias entre hive e impala:
+			- Hive es desarrollado por Facebook, pero Impala es desarrollado por Apache Software Foundation .
+			- Hive admite el formato de archivo de formato de columna optimizada (ORC) pero Impala admite el formato Parquet con compresión rápida .
+			- Hive está escrito en Java pero Impala está escrito en C ++.
+			- La velocidad de procesamiento de consultas en Hive es lenta, pero Impala es 6-69 veces más rápido que Hive .
+			- En Hive, la latencia es alta, pero en Impala, la latencia es baja .
+			- Hive no admite el procesamiento en paralelo, pero Impala si.
+			- Hive admite MapReduce pero Impala no es compatible con MapReduce .
+			- En Hive, no hay una característica de seguridad, pero Impala admite la autenticación Kerberos .
+			- Hive es tolerante a fallas, pero Impala no admite tolerancia a fallas .
+
+
+	3.3) Comando INVALIDATE METADATA, ¿en qué consiste?
+
+		- La instrucción INVALIDATE METADATA marca los metadatos de una o todas las tablas como obsoletos. 
+		  La próxima vez que el servicio Impala realiza una consulta en una tabla cuyos metadatos se invalidan,
+		  Impala vuelve a cargar los metadatos asociados antes de que continúe la consulta. 
+		  Como se trata de una operación muy cara en comparación con la actualización incremental de metadatos 
+		  realizada por la instrucción REFRESH, cuando sea posible, prefiera REFRESH en lugar de INVALIDATE METADATA.
+
+
+	3.4) Hacer invalidate metadata en Impala de la base de datos datos_padron.
+		- impala-shell
+		- use datos_padron;
+		- INVALIDATE METADATA padron_txt;
+
+
+
+	3.5) Calcular el total de EspanolesHombres, espanolesMujeres, ExtranjerosHombres y ExtranjerosMujeres agrupado por DESC_DISTRITO y DESC_BARRIO.
+
+		- SELECT sum(EspanolesHombres), sum(espanolesMujeres), sum(ExtranjerosHombres), sum (extranjerosmujeres) 
+		  FROM padron_txt group by DESC_DISTRITO, DESC_BARRIO;
+
+
+
+	3.6) Llevar a cabo las consultas en Hive en las tablas padron_txt_2 y padron_parquet_2 (No deberían incluir espacios innecesarios). ¿Alguna conclusión?
+
+		- SELECT sum(EspanolesHombres), sum(espanolesMujeres), sum(ExtranjerosHombres), sum (extranjerosmujeres)
+		   FROM padron_txt_2 group by DESC_DISTRITO, DESC_BARRIO;
+
+	3.7) Llevar a cabo la misma consulta sobre las mismas tablas en Impala. ¿Alguna conclusión?
+
+		- SELECT sum(CAST (EspanolesHombres AS INT)), sum( CAST(espanolesMujeres AS INT)), sum(CAST (ExtranjerosHombres AS INT)), 
+		  sum (CAST (extranjerosmujeres AS INT)) FROM padron_txt_2 group by DESC_DISTRITO, DESC_BARRIO;
+
+	3.8)¿Se percibe alguna diferencia de rendimiento entre Hive e Impala?
+
+		- Impala es mas rapido que Hive
+
+
+	4.1) Crear tabla (Hive) padron_particionado particionada por campos DESC_DISTRITO y DESC_BARRIO cuyos datos estén en formato parquet.
+
+		- CREATE TABLE padron_particionado (COD_DISTRITO string, COD_DIST_BARRIO string, COD_BARRIO string, COD_DIST_SECCION string, 
+		COD_SECCION string, COD_EDAD_INT string, EspanolesHombres string, EspanolesMujeres string, ExtranjerosHombres string, ExtranjerosMujeres string) 
+		partitioned by (DESC_DISTRITO string, DESC_BARRIO string) STORED AS PARQUET;
+
+
+
+	4.2) Insertar datos (en cada partición) dinámicamente (con Hive) en la tabla recién creada a partir de un select de la tabla padron_parquet_2.
+
+		- set hive.exec.dynamic.partition.mode=nonstrict;
+		- INSERT INTO TABLE padron_particionado PARTITION(DESC_DISTRITO, DESC_BARRIO) SELECT cod_distrito, cod_dist_barrio, cod_barrio, cod_dist_seccion, cod_seccion, cod_edad_int, espanoleshombres, espanolesmujeres, extranjeroshombres, extranjerosmujeres, DESC_DISTRITO, DESC_BARRIO FROM padron_parquet_2; 
+
+
+	4.3) Hacer invalidate metadata en Impala de la base de datos padron_particionado.
+
+		- Invalidate metadata padron_particionado;
+
+
+	4.4) Calcular el total de EspanolesHombres, EspanolesMujeres, ExtranjerosHombres yExtranjerosMujeres agrupado por 
+	     DESC_DISTRITO y DESC_BARRIO para los distritos CENTRO, LATINA, CHAMARTIN, TETUAN, VICALVARO y BARAJAS.
+		
+		-  SELECT sum(CAST (EspanolesHombres AS INT)), sum(CAST(espanolesMujeres AS INT)), sum(CAST (ExtranjerosHombres AS INT)), sum (CAST (extranjerosmujeres AS INT))
+			FROM padron_particionado 
+			WHERE COD_BARRIO IN (SELECT COD_BARRIO FROM padron_particionado where DESC_BARRIO IN ("CENTRO", "LATINA", "CHAMARTIN", "TETUAN", "VICALVARO" , "BARAJAS"))
+			GROUP BY DESC_DISTRITO, DESC_BARRIO ;
+
+
+
+	4.5) Llevar a cabo la consulta en Hive en las tablas padron_parquet y padron_partitionado. ¿Alguna conclusión?
+
+
+
+	4.6) Llevar a cabo la consulta en Impala en las tablas padron_parquet y padron_particionado. ¿Alguna conclusión?
+
+
+
+	4.7) Hacer consultas de agregación (Max, Min, Avg, Count) tal cual el ejemplo anterior con las 3 tablas 
+	    (padron_txt_2, padron_parquet_2 y padron_particionado) y comparar rendimientos tanto en Hive como en Impala y sacar conclusiones.
+
+
+
