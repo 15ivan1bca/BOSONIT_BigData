@@ -218,5 +218,220 @@
 	4.7) Hacer consultas de agregación (Max, Min, Avg, Count) tal cual el ejemplo anterior con las 3 tablas 
 	    (padron_txt_2, padron_parquet_2 y padron_particionado) y comparar rendimientos tanto en Hive como en Impala y sacar conclusiones.
 
+		- SELECT Max(CAST (EspanolesHombres AS INT)), Min( CAST(espanolesMujeres AS INT)), Avg(CAST (ExtranjerosHombres AS INT)), Count (CAST (extranjerosmujeres AS INT)) FROM padron_parquet p WHERE p.COD_DISTRITO IN (SELECT COD_BARRIO FROM padron_parquet where DESC_DISTRITO IN ("CENTRO", "LATINA", "CHAMARTIN", "TETUAN", "VICALVARO" , "BARAJAS")) GROUP BY p.DESC_DISTRITO, p.DESC_BARRIO ;
+			HIVE: 26.8 segundos
+			IMPALA: 0.54 segundos
+		
+		- SELECT Max(CAST (EspanolesHombres AS INT)), Min( CAST(espanolesMujeres AS INT)), Avg(CAST (ExtranjerosHombres AS INT)), Count (CAST (extranjerosmujeres AS INT)) FROM padron_parquet_2 p WHERE p.COD_DISTRITO IN (SELECT COD_BARRIO FROM padron_parquet_2 where DESC_BARRIO IN ("CENTRO", "LATINA", "CHAMARTIN", "TETUAN", "VICALVARO" , "BARAJAS")) GROUP BY p.DESC_DISTRITO, p.DESC_BARRIO ;
+			HIVE: 26.2 segundos
+			IMPALA: 2.8 segundos
+
+		- SELECT Max(CAST (EspanolesHombres AS INT)), Min( CAST(espanolesMujeres AS INT)), Avg(CAST (ExtranjerosHombres AS INT)), Count (CAST (extranjerosmujeres AS INT)) FROM padron_particionado p WHERE p.COD_BARRIO IN (SELECT COD_BARRIO FROM padron_particionado where DESC_DISTRITO IN ("CENTRO", "LATINA", "CHAMARTIN", "TETUAN", "VICALVARO" , "BARAJAS")) GROUP BY p.DESC_DISTRITO, p.DESC_BARRIO ;
+			HIVE: 29.75
+			IMPALA: 0.9 segundos
+
+
+5- Trabajando con tablas en HDFS.
+
+	5.1) Crear un documento de texto en el almacenamiento local que contenga una secuencia de números distribuidos en filas y separados por columnas, llámalo datos1 y que sea por ejemplo:
+	     1,2,3
+             4,5,6
+             7,8,9
+
+		- vi datos1
+
+	5.2) Crear un segundo documento (datos2) con otros números pero la misma estructura.
+
+		- vi datos2
+
+	5.3) Crear un directorio en HDFS con un nombre a placer, por ejemplo, /test. Si estás en
+	     una máquina Cloudera tienes que asegurarte de que el servicio HDFS está activo ya
+	     que puede no iniciarse al encender la máquina (puedes hacerlo desde el Cloudera
+	     Manager). A su vez, en las máquinas Cloudera es posible (dependiendo de si
+	     usamos Hive desde consola o desde Hue) que no tengamos permisos para crear
+	     directorios en HDFS salvo en el directorio /user/cloudera.
+
+		- hdfs dfs -mkdir test
+
+	5.4) Mueve tu fichero datos1 al directorio que has creado en HDFS con un comando desde consola.
+
+		- hadoop fs -put -f datos1 test
+
+	5.5) Desde Hive, crea una nueva database por ejemplo con el nombre numeros. Crea
+     	     una tabla que no sea externa y sin argumento location con tres columnas
+     	     numéricas, campos separados por coma y delimitada por filas. La llamaremos por
+	     ejemplo numeros_tbl.
+
+		- create database numeros
+		- CREATE TABLE numeros_tbl ( COL1 int, COL2 int, COL3 int) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE; 
+
+	5.6) Carga los datos de nuestro fichero de texto datos1 almacenado en HDFS en la tabla
+	     de Hive. Consulta la localización donde estaban anteriormente los datos
+	     almacenados. ¿Siguen estando ahí? ¿Dónde están?. Borra la tabla, ¿qué ocurre con
+	     los datos almacenados en HDFS?• 
+
+		- Load data  inpath 'test/datos1' into table numeros_tbl;
+		- El archivo desaparece de la ruta de hdfs y si se borra la tabla los datos desaparecen
+
+	5.7) Vuelve a mover el fichero de texto datos1 desde el almacenamiento local al
+	     directorio anterior en HDFS.
+
+		- hadoop fs -put -f datos1 test
+
+	5.8) Desde Hive, crea una tabla externa sin el argumento location. Y carga datos1 (desde
+	     HDFS) en ella. ¿A dónde han ido los datos en HDFS? Borra la tabla ¿Qué ocurre con
+	     los datos en hdfs?
+
+		- CREATE EXTERNAL TABLE numeros_tbl2 ( COL1 int, COL2 int, COL3 int) ROW FORMAT DELIMITED FIELDS TERMINATED BY ','  STORED AS TEXTFILE;
+		- Load data  inpath 'test/datos1' into table numeros_tbl2;
+		- Ocurre lo mismo que en el caso anterior
+
+	5.9) Borra el fichero datos1 del directorio en el que estén. Vuelve a insertarlos en el
+	     directorio que creamos inicialmente (/test). Vuelve a crear la tabla numeros desde
+	     hive pero ahora de manera externa y con un argumento location que haga
+	     referencia al directorio donde los hayas situado en HDFS (/test). No cargues los
+	     datos de ninguna manera explícita. Haz una consulta sobre la tabla que acabamos
+	     de crear que muestre todos los registros. ¿Tiene algún contenido?
+
+		- CREATE EXTERNAL TABLE numeros_tbl3 ( COL1 int, COL2 int, COL3 int) ROW FORMAT DELIMITED FIELDS TERMINATED BY ','  STORED AS TEXTFILE LOCATION '/test';
+		- Si, y tambien sigue el fichero en hdfs
+
+	5.10) Inserta el fichero de datos creado al principio, "datos2" en el mismo directorio de
+	      HDFS que "datos1". Vuelve a hacer la consulta anterior sobre la misma tabla. ¿Qué
+	      salida muestra?
+
+		- hadoop fs -put -f datos2 test
+		- me sigue saliendo los datos de datos1
+
+	5.11) Extrae conclusiones de todos estos anteriores apartados.
+
+		- load elimina los datos de hdfs y los pasa a la tabla de hive, por lo que es una desventaja
+
+
+6- Un poquito de Spark
+
+	6.1) Comenzamos realizando la misma práctica que hicimos en Hive en Spark, importando el csv. 
+	     Sería recomendable intentarlo con opciones que quiten las "" de los campos, que ignoren los espacios 
+             innecesarios en los campos, que sustituyan los valores vacíos por 0 y que infiera el esquema.
+
+		- import org.apache.spark.sql.SparkSession;
+		  import org.apache.spark.sql.functions._;
+		  import org.apache.spark.sql.types._;
+
+		- val path = "dbfs:/FileStore/shared_uploads/ivan.saez@bosonit.com/Rango_Edades_Seccion_202204.csv"
+		  val dfEdades = spark.read.option("header", "true").option("inferschema", "true").option("delimiter",";").csv(path);
+		  dfEdades.show(10);
+
+	6.2) De manera alternativa también se puede importar el csv con menos tratamiento en la importación y 
+	     hacer todas las modificaciones para alcanzar el mismo estado de limpieza de los datos con funciones de Spark.
+
+		- val dfEdadesTrim = dfEdades.withColumn("DESC_DISTRITO",trim(col("DESC_DISTRITO"))).withColumn("DESC_BARRIO",trim(col("DESC_BARRIO"))).show(10);
+		- val dfEdadesTrimNulos = dfEdadesTrim.na.fill(0).show(10);
+
+	6.3) Enumera todos los barrios diferentes.
+
+		- dfEdadesTrimNulos.agg(countDistinct('DESC_BARRIO) as 'Cuenta).show()
+
+	6.4) Crea una vista temporal de nombre "padron" y a través de ella cuenta el número de barrios diferentes que hay.
+
+		- dfEdadesTrimNulos.createOrReplaceTempView("padron");
+		- spark.sql("""SELECT COUNT(DISTINCT DESC_BARRIO) AS Cuenta FROM padron""").show();
+
+	6.5) Crea una nueva columna que muestre la longitud de los campos de la columna DESC_DISTRITO y que se llame "longitud".
+
+		- val dfPadron = dfEdadesTrimNulos.withColumn("longitud", length(col("DESC_DISTRITO")))
+
+	6.6) Crea una nueva columna que muestre el valor 5 para cada uno de los registros de la tabla.
+
+		- val dfPadron5 = dfPadron.withColumn("cinco", lit(5))
+
+	6.7) Borra esta columna.
+
+		- val dfPadron6 = dfPadron5.drop("cinco")
+
+	6.8) Particiona el DataFrame por las variables DESC_DISTRITO y DESC_BARRIO.
+
+		- val dfPadron7= dfPadron6.repartition(F.col("DESC_BARRIO"), F.col("DESC_DISTRITO")).cache()
+
+	6.9) Almacénalo en caché. Consulta en el puerto 4040 (UI de Spark) de tu usuario local el estado
+	     de los rdds almacenados.
+
+		- val dfPadron7= dfPadron6.repartition(F.col("DESC_BARRIO"), F.col("DESC_DISTRITO")).cache()
+
+	6.10) Lanza una consulta contra el DF resultante en la que muestre el número total de 
+	      "espanoleshombres", "espanolesmujeres", extranjeroshombres" y "extranjerosmujeres"
+	      para cada barrio de cada distrito. Las columnas distrito y barrio deben ser las primeras en
+	      aparecer en el show. Los resultados deben estar ordenados en orden de más a menos
+	      según la columna "extranjerosmujeres" y desempatarán por la columna
+	      "extranjeroshombres".
+
+		- import org.apache.spark.sql.{functions => F}
+		- val dfPadron8 = dfPadron7.groupBy("DESC_BARRIO", "DESC_DISTRITO").agg(F.sum(F.col("espanoleshombres").cast("int")).alias("espanoleshombres"),
+		  F.sum(F.col("espanolesmujeres").cast("int")).alias("espanolesmujeres"),  
+		  F.sum(F.col("extranjeroshombres").cast("int")).alias("extranjeroshombres"), 
+		  F.sum(F.col("extranjerosmujeres").cast("int")).alias("extranjerosmujeres") )
+		  .orderBy(desc("extranjerosmujeres"), desc("extranjeroshombres")).cache()
+		- dfPadron8.show()
+
+	6.11) Elimina el registro en caché.
+
+		- dfPadron8.unpersist()
+
+	6.12) Crea un nuevo DataFrame a partir del original que muestre únicamente una columna con
+	      DESC_BARRIO, otra con DESC_DISTRITO y otra con el número total de "espanoleshombres"
+	      residentes en cada distrito de cada barrio. Únelo (con un join) con el DataFrame original a
+	      través de las columnas en común.
+
+		- val dfPadron9 = dfPadron8.groupBy("DESC_BARRIO", "DESC_DISTRITO").agg(F.sum(F.col("espanoleshombres").cast("int")).alias("espanoleshombres")).cache()
+		  val df_join = dfPadron9.join(dfPadron8, "DESC_BARRIO");
+		  df_join.show();
+		
+
+	6.13) Repite la función anterior utilizando funciones de ventana. (over(Window.partitionBy.....)).
+
+		---
+
+
+	6.14) Mediante una función Pivot muestra una tabla (que va a ser una tabla de contingencia) que
+	      contenga los valores totales ()la suma de valores) de espanolesmujeres para cada distrito y
+	      en cada rango de edad (COD_EDAD_INT). Los distritos incluidos deben ser únicamente
+	      CENTRO, BARAJAS y RETIRO y deben figurar como columnas . El aspecto debe ser similar a este:
+
+	
+		- val pivotDF = dfPadron6.where( F.col("DESC_DISTRITO").isin("CENTRO", "BARAJAS" , "RETIRO")).
+		  groupBy("COD_EDAD_INT").pivot("DESC_DISTRITO").sum("espanolesmujeres").orderBy("COD_EDAD_INT")
+		  pivotDF.show(100);
+
+
+	6.15) Utilizando este nuevo DF, crea 3 columnas nuevas que hagan referencia a qué porcentaje
+	      de la suma de "espanolesmujeres" en los tres distritos para cada rango de edad representa
+	      cada uno de los tres distritos. Debe estar redondeada a 2 decimales. Puedes imponerte la
+	      condición extra de no apoyarte en ninguna columna auxiliar creada para el caso.
+
+		- val pivotDF2 = pivotDF.withColumn("POR_BARAJAS", (col("BARAJAS") / (col("CENTRO") + col("BARAJAS") + col("RETIRO"))) * 100)
+		  .withColumn("POR_CENTRO", (col("CENTRO") / (col("CENTRO") + col("BARAJAS") + col("RETIRO"))) * 100)
+		  .withColumn("POR_RETIRO", (col("RETIRO") / (col("CENTRO")+ col("BARAJAS")+ col("RETIRO")) * 100))
+		  .orderBy("COD_EDAD_INT")
+		- pivotDF2.show()
+
+	6.16) Guarda el archivo csv original particionado por distrito y por barrio (en ese orden) en un
+	      directorio local. Consulta el directorio para ver la estructura de los ficheros y comprueba
+	      que es la esperada.´
+
+		- df.write.format("csv").mode("overwrite").partitionBy("DESC_BARRIO", "DESC_DISTRITO").save("ruta")
+
+	6.17) Haz el mismo guardado pero en formato parquet. Compara el peso del archivo con el
+	      resultado anterior.
+
+		- df.write.format("parquet").mode("overwrite").partitionBy("DESC_BARRIO", "DESC_DISTRITO").save("ruta")
+
+
+7- ¿Y si juntamos Spark y Hive?
+
+	7.1) Por último, prueba a hacer los ejercicios sugeridos en la parte de Hive con el csv "Datos
+	     Padrón" (incluyendo la importación con Regex) utilizando desde Spark EXCLUSIVAMENTE
+	     sentencias spark.sql, es decir, importar los archivos desde local directamente como tablas
+	     de Hive y haciendo todas las consultas sobre estas tablas sin transformarlas en ningún
+	     momento en DataFrames ni DataSets.
 
 
